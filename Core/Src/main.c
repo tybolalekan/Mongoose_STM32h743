@@ -485,8 +485,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/* If using RS-485 transceiver (MAX485 etc.), enable this and set pin/port */
-#if 1
+#if 0
   #define USE_RS485 1
 #endif
 
@@ -503,19 +502,6 @@ static void MX_GPIO_Init(void)
 
 #define PZEM_SLAVE  0x01
 #define PZEM_UART   (&huart2)
-//#define DEBUG_UART  (&huart1)
-//
-///* Utility: debug print to huart1 (if configured) */
-//static void dbg_print(const char *fmt, ...) {
-//    char buf[128];
-//    va_list ap;
-//    va_start(ap, fmt);
-//    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-//    va_end(ap);
-//    if (n > 0) {
-//        HAL_UART_Transmit(DEBUG_UART, (uint8_t*)buf, (uint16_t)n, HAL_MAX_DELAY);
-//    }
-//}
 
 /* Modbus CRC16 (0xA001) */
 uint16_t Modbus_CRC16(const uint8_t *buf, uint16_t len) {
@@ -530,17 +516,11 @@ uint16_t Modbus_CRC16(const uint8_t *buf, uint16_t len) {
     return crc;
 }
 
-/* Read Modbus input registers (function 0x04).
- * start: starting register address
- * num: number of registers to read
- * resp: buffer to receive the whole response (including CRC)
- * maxlen: resp buffer size
- * returns: number of bytes received in resp (0 on error)
- */
+
 static int pzem_read_registers(uint16_t start, uint16_t num, uint8_t *resp, uint16_t maxlen, uint32_t timeout_ms) {
     uint8_t req[8];
     req[0] = PZEM_SLAVE;
-    req[1] = 0x04; /* read input registers */
+    req[1] = 0x04;
     req[2] = (start >> 8) & 0xFF;
     req[3] = start & 0xFF;
     req[4] = (num >> 8) & 0xFF;
@@ -552,7 +532,7 @@ static int pzem_read_registers(uint16_t start, uint16_t num, uint8_t *resp, uint
     /* If RS485, drive DE high before sending */
     rs485_set_tx();
 
-    /* Send request (blocking) */
+
     if (HAL_UART_Transmit(PZEM_UART, req, sizeof(req), HAL_MAX_DELAY) != HAL_OK) {
         rs485_set_rx();
         return 0;
@@ -610,9 +590,7 @@ typedef struct {
     uint16_t alarm;   /* 0x0000 = no alarm, 0xFFFF = alarm */
 } pzem_data_t;
 
-/* Read all main PZEM registers (0x0000..0x0009) and parse values.
- * Returns 1 on success, 0 on failure.
- */
+
 int pzem_read_all(pzem_data_t *out) {
     uint8_t resp[32];
     int rx = pzem_read_registers(0x0000, 10, resp, sizeof(resp), 500);
@@ -628,7 +606,7 @@ int pzem_read_all(pzem_data_t *out) {
         regs[i] = (uint16_t)resp[3 + 2*i] << 8 | (uint16_t)resp[3 + 2*i + 1];
     }
 
-    /* Conversion per datasheet:
+    /* Conversion as per datasheet:
        regs[0] : voltage (1 LSB = 0.1 V)
        regs[1] : current low 16 bits
        regs[2] : current high 16 bits  (1 LSB overall = 0.001 A)
@@ -719,9 +697,7 @@ void StartTask02(void *argument)
   osDelay(10000);
   for(;;)
   {
-//	 glue_publish_data();
-	// osDelay(10000);
-	// Read from PZEM every 2 seconds
+
 	 static uint32_t last_ms = 0;
 	 if (HAL_GetTick() - last_ms > 5000) {
 		 last_ms = HAL_GetTick();
@@ -730,14 +706,15 @@ void StartTask02(void *argument)
 //			data.current = 1.2;
 //			data.power = 290;
 //			data.energy = 1;
-//			data.frequency=49.5;
+//			data.frequency = 49.5;
 //			data.pf = 0.9;
 //			data.alarm = 0XFF;
 		 if (pzem_read_all(&data)) {
 			 const char *json = pzem_to_json(&data);
-			 printf("Publishing: %s\n", json);
+			 printf("Publishing: %s\n\n", json);
 
 			 // Publish to broker
+#if 1
 			 if (g_mqtt_conn != NULL) {
 				struct mg_mqtt_opts opts;        // Publish MQTT response
 				memset(&opts, 0, sizeof(opts));  // to the TX topic
@@ -745,6 +722,7 @@ void StartTask02(void *argument)
 				opts.message = mg_str(json);
 			    mg_mqtt_pub(g_mqtt_conn, &opts);
 			 }
+#endif
 		 } else {
 			 printf("PZEM read failed\n");
 		 }
